@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mon téléphone — suivi GPS</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="phone-page">
+    <h1>Suivi de cet appareil</h1>
+    <p class="lead">
+      Cette page envoie la position GPS de <b>ce téléphone</b> au tableau de bord.
+      Saisissez son numéro une fois, puis démarrez le suivi.
+    </p>
+
+    <div class="field">
+      <label for="phone">Numéro de ce téléphone</label>
+      <input id="phone" type="tel" inputmode="tel" placeholder="77 123 45 67" autocomplete="off">
+    </div>
+
+    <div class="field">
+      <label for="label">Nom (optionnel)</label>
+      <input id="label" type="text" placeholder="Ex. Mon Samsung" autocomplete="off">
+    </div>
+
+    <button class="big" id="toggle">Démarrer le suivi</button>
+    <p class="err" id="err"></p>
+
+    <div class="live-box" id="box" hidden>
+      <span class="state live" id="state"><i></i>Suivi actif</span>
+      <p class="big-num" id="coords" style="margin:12px 0 0">En attente du GPS…</p>
+      <p class="hint" id="meta"></p>
+    </div>
+
+    <p class="hint" style="margin-top:22px">
+      Gardez cette page ouverte et l'écran allumé pour un suivi continu.
+      Si le téléphone se verrouille, la <b>dernière position connue</b> reste
+      enregistrée sur le tableau de bord.
+    </p>
+
+    <div class="log" id="log"></div>
+  </div>
+
+  <script src="tracker.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+# Déploiement automatique sur Render (https://render.com)
+# Render lit ce fichier et crée le service tout seul.
+services:
+  - type: web
+    name: localisateur-gps
+    runtime: node
+    plan: free
+    buildCommand: ""          # aucune dépendance à installer
+    startCommand: node server.js
+    envVars:
+      - key: ACCESS_KEY
+        sync: false           # vous saisissez votre clé secrète dans Render
+    # Disque persistant pour garder les positions entre les redémarrages.
+    # (Optionnel : sur le plan gratuit le disque n'est pas garanti.)
+    autoDeploy: true
