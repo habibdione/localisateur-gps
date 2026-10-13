@@ -107,6 +107,7 @@ function render() {
   const d = current;
   const l = d.last;
   const st = stateOf(l.ts);
+  evaluateAlerts(d, st.cls);
   const when = new Date(l.ts).toLocaleString('fr-FR');
 
   $('result').innerHTML = `
@@ -132,9 +133,99 @@ function render() {
            href="https://www.google.com/maps/search/?api=1&query=${l.lat},${l.lon}">Vue satellite</a>
         <button class="ghost" id="recenter">Centrer</button>
       </div>
+      <div class="actions">
+        <button id="ring">🔔 Faire sonner</button>
+        <button class="ghost" id="alerts">${alertsOn ? '🔕 Alertes activées' : '🔔 Alerte hors-ligne'}</button>
+      </div>
     </div>`;
 
   $('recenter').onclick = () => { followMap = true; map.setView([l.lat, l.lon], 17); };
+  $('ring').onclick = ring;
+  $('alerts').onclick = toggleAlerts;
+}
+
+/* -------------------------------------------------- sonnerie + alertes */
+
+let alertsOn = false;
+let prevState = null;      // etat precedent de l'appareil affiche
+let beepCtx = null;
+
+async function ring() {
+  if (!current) return;
+  const digits = normPhone(current.phone);
+  const btn = $('ring');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/ring?phone=' + encodeURIComponent(digits) + '&k=' + encodeURIComponent(KEY),
+                          { method: 'POST' });
+    if (!r.ok) throw new Error('echec');
+    showToast('🔔 Sonnerie envoyée — le téléphone sonne s\'il est en ligne, écran allumé.', 'ok');
+  } catch (e) {
+    showToast('Impossible d\'envoyer la sonnerie.', 'bad');
+  } finally {
+    setTimeout(() => { btn.disabled = false; }, 2500);
+  }
+}
+
+async function toggleAlerts() {
+  if (!alertsOn) {
+    try {                      // debloque le son dans ce geste utilisateur
+      if (!beepCtx) beepCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (beepCtx.state === 'suspended') beepCtx.resume();
+    } catch (_) {}
+    if ('Notification' in window && Notification.permission === 'default') {
+      try { await Notification.requestPermission(); } catch (_) {}
+    }
+    alertsOn = true;
+    showToast('Alertes activées : vous serez prévenu si l\'appareil passe hors ligne.', 'ok');
+  } else {
+    alertsOn = false;
+    showToast('Alertes désactivées.', '');
+  }
+  render();
+}
+
+function evaluateAlerts(d, stateCls) {
+  if (prevState && stateCls !== prevState) {
+    if (stateCls === 'off' && prevState !== 'off') {
+      fireAlert('⚠️ ' + d.phone + ' est hors ligne', 'Dernière position conservée.', 'bad');
+    } else if (stateCls === 'live' && prevState !== 'live') {
+      fireAlert('✅ ' + d.phone + ' est de nouveau en ligne', '', 'ok');
+    }
+  }
+  prevState = stateCls;
+}
+
+function fireAlert(title, body, kind) {
+  showToast(title + (body ? ' — ' + body : ''), kind);
+  if (!alertsOn) return;
+  beep();
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try { new Notification(title, { body: body }); } catch (_) {}
+  }
+}
+
+function beep() {
+  try {
+    if (!beepCtx) beepCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (beepCtx.state === 'suspended') beepCtx.resume();
+    const o = beepCtx.createOscillator(), g = beepCtx.createGain();
+    o.type = 'sine'; o.frequency.value = 880;
+    o.connect(g); g.connect(beepCtx.destination);
+    g.gain.setValueAtTime(0.4, beepCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, beepCtx.currentTime + 0.5);
+    o.start(); o.stop(beepCtx.currentTime + 0.5);
+  } catch (_) {}
+}
+
+let toastTimer = null;
+function showToast(msg, kind) {
+  const el = $('toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'toast show' + (kind ? ' ' + kind : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = 'toast'; }, 5000);
 }
 
 /* ----------------------------------------------------------------- recherche */
@@ -150,6 +241,7 @@ async function locate(phone) {
     if (!d.last) throw new Error("Cet appareil est enregistré mais n'a envoyé aucune position.");
 
     current = d;
+    prevState = null;          // nouvel appareil : pas de fausse alerte au 1er rendu
     followMap = true;
     render();
     drawPosition(d.last, d.history);

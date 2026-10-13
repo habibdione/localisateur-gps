@@ -24,6 +24,87 @@ if (navigator.getBattery) {
   navigator.getBattery().then((b) => { battery = b; }).catch(() => {});
 }
 
+/* ------------------------------------------------------------- sonnerie */
+
+let audioCtx = null;
+let alarmNodes = null;
+let alarmTimer = null;
+let vibrateTimer = null;
+let lastRing = 0;
+
+function unlockAudio() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (_) { /* ignore */ }
+}
+
+function stopAlarmSound() {
+  if (alarmNodes) {
+    try { alarmNodes.osc.stop(); } catch (_) {}
+    try { alarmNodes.osc.disconnect(); alarmNodes.gain.disconnect(); } catch (_) {}
+    alarmNodes = null;
+  }
+}
+
+function playAlarm() {
+  unlockAudio();
+  if (!audioCtx) return;
+  stopAlarmSound();
+
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'square';
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  // Sirene : la frequence alterne (haut/bas) pendant 18 s.
+  const t0 = audioCtx.currentTime;
+  for (let i = 0; i < 36; i++) {
+    const t = t0 + i * 0.5;
+    osc.frequency.setValueAtTime(i % 2 ? 1100 : 700, t);
+    gain.gain.setValueAtTime(0.7, t);
+  }
+  osc.start();
+  alarmNodes = { osc, gain };
+
+  if (navigator.vibrate) {
+    try { navigator.vibrate([400, 200, 400, 200, 400]); } catch (_) {}
+    vibrateTimer = setInterval(() => { try { navigator.vibrate([400, 200, 400]); } catch (_) {} }, 1600);
+  }
+
+  $('ring-banner').hidden = false;
+  clearTimeout(alarmTimer);
+  alarmTimer = setTimeout(stopAlarm, 18000);   // s'arrete toute seule
+  log('SONNERIE declenchee a distance');
+}
+
+function stopAlarm() {
+  stopAlarmSound();
+  clearTimeout(alarmTimer);
+  clearInterval(vibrateTimer);
+  if (navigator.vibrate) { try { navigator.vibrate(0); } catch (_) {} }
+  $('ring-banner').hidden = true;
+}
+
+function maybeRing(ts) {
+  if (ts && ts > lastRing) { lastRing = ts; playAlarm(); }
+}
+
+/* Flux temps reel : recoit l'ordre de sonnerie envoye du tableau de bord. */
+let cmdStream = null;
+function openCommandStream(digits) {
+  if (cmdStream) cmdStream.close();
+  try {
+    cmdStream = new EventSource('/api/events?phone=' + encodeURIComponent(digits) + '&k=' + encodeURIComponent(KEY));
+    cmdStream.onmessage = (ev) => {
+      let m;
+      try { m = JSON.parse(ev.data); } catch (_) { return; }
+      if (m.type === 'ring') maybeRing(m.ts || Date.now());
+    };
+  } catch (_) { /* SSE indisponible : le ping recuperera la sonnerie */ }
+}
+
 /* --------------------------------------------------------------- ecran allume */
 
 let wakeLock = null;
@@ -66,6 +147,7 @@ async function send(pos) {
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.error || ('erreur ' + r.status));
+    if (data.ring) maybeRing(data.ring);            // sonnerie demandee ?
     log('position envoyée (±' + Math.round(c.accuracy) + ' m)');
     $('err').textContent = '';
   } catch (e) {
@@ -127,6 +209,8 @@ function start() {
     });
   }, 60000);
 
+  unlockAudio();              // autorise le son (on est dans un tap utilisateur)
+  openCommandStream(digits);  // ecoute les ordres de sonnerie
   keepAwake();
   $('box').hidden = false;
   $('toggle').textContent = 'Arrêter le suivi';
@@ -139,6 +223,8 @@ function stop() {
   if (watchId !== null) navigator.geolocation.clearWatch(watchId);
   watchId = null;
   clearInterval(heartbeat);
+  if (cmdStream) { cmdStream.close(); cmdStream = null; }
+  stopAlarm();
   if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
   $('box').hidden = true;
   $('toggle').textContent = 'Démarrer le suivi';
@@ -148,6 +234,7 @@ function stop() {
 }
 
 $('toggle').onclick = () => (watchId === null ? start() : stop());
+$('stop-ring').onclick = stopAlarm;
 
 // Reprise automatique si le suivi etait actif avant la fermeture de la page.
 if (localStorage.getItem('gps_auto') === '1' && $('phone').value) start();

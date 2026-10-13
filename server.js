@@ -212,14 +212,32 @@ const server = http.createServer(async (req, res) => {
       if (entry.history.length > MAX_HISTORY) {
         entry.history.splice(0, entry.history.length - MAX_HISTORY);
       }
+
+      // Sonnerie en attente ? (le telephone la recupere dans la reponse du ping)
+      let ring = 0;
+      if (entry.ring) {
+        if (Date.now() - entry.ring < 60000) ring = entry.ring;
+        else entry.ring = 0;
+      }
       save();
 
       broadcast(key, { type: 'position', phone: entry.phone, label: entry.label, last: point });
-      return sendJSON(res, 200, { ok: true, saved: point.ts });
+      return sendJSON(res, 200, { ok: true, saved: point.ts, ring: ring });
     }
 
     // Tout le reste exige la cle en query string.
     if (!keyOk(url.searchParams.get('k'))) return sendJSON(res, 401, { error: 'cle invalide' });
+
+    // Declencher la sonnerie d'un appareil (le tel joue une sirene).
+    if (p === '/api/ring' && req.method === 'POST') {
+      const key = normPhone(url.searchParams.get('phone'));
+      const entry = db[key];
+      if (!entry) return sendJSON(res, 404, { error: 'inconnu' });
+      entry.ring = Date.now();
+      broadcast(key, { type: 'ring', ts: entry.ring });
+      save();
+      return sendJSON(res, 200, { ok: true });
+    }
 
     // Recherche par numero.
     if (p === '/api/device' && req.method === 'GET') {

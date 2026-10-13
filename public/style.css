@@ -223,6 +223,53 @@ a.btn:hover { border-color: var(--accent); }
 
 /* ------------------------------------------------------- page telephone */
 
+/* ------------------------------------------------------------------ toast */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translate(-50%, 140%);
+  max-width: min(92vw, 440px);
+  padding: 13px 18px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 14px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  z-index: 1000;
+  pointer-events: none;
+}
+.toast.show { transform: translate(-50%, 0); opacity: 1; }
+.toast.ok { border-left-color: var(--ok); }
+.toast.bad { border-left-color: var(--bad); }
+
+/* --------------------------------------------------- bouton sonner (carte) */
+
+#ring { background: var(--warn); color: #1a1205; font-weight: 700; }
+#ring:hover { filter: brightness(1.08); }
+
+/* ------------------------------------------------- bannniere sonnerie (tel) */
+
+#ring-banner {
+  margin-top: 22px;
+  padding: 22px 18px;
+  background: rgba(210, 153, 34, 0.12);
+  border: 1px solid var(--warn);
+  border-radius: 14px;
+  text-align: center;
+}
+#ring-banner p { margin: 6px 0 14px; font-weight: 600; }
+.ring-emoji { font-size: 44px; animation: shake 0.5s infinite; }
+@keyframes shake {
+  0%, 100% { transform: rotate(-12deg); }
+  50% { transform: rotate(12deg); }
+}
+
 .phone-page {
   max-width: 460px;
   margin: 0 auto;
