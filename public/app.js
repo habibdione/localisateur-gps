@@ -215,6 +215,31 @@ map.on('dragstart', () => { followMap = false; });
 
 const trackerUrl = location.origin + '/tracker?k=' + encodeURIComponent(KEY);
 $('tracker-link').href = trackerUrl;
+
+// QR code du lien traceur, généré entièrement dans le navigateur
+// (la clé secrète ne sort jamais vers un service externe).
+try {
+  $('qrcode').innerHTML = '';
+  new QRCode($('qrcode'), {
+    text: trackerUrl,
+    width: 190,
+    height: 190,
+    colorDark: '#000000',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M
+  });
+} catch (e) {
+  $('qrcode').textContent = 'QR indisponible';
+}
+
+// Un QR vers localhost n'est scannable par personne d'autre : on prévient.
+const host = location.hostname;
+if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]') {
+  const w = $('qr-warn');
+  w.hidden = false;
+  w.textContent = "Ce QR pointe vers localhost : ouvrez le tableau de bord via l'adresse publique (tunnel / Render) pour un QR que vos proches peuvent scanner.";
+}
+
 $('copy-link').onclick = async () => {
   try {
     await navigator.clipboard.writeText(trackerUrl);

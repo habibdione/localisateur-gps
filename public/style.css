@@ -163,6 +163,21 @@ a.btn {
 }
 a.btn:hover { border-color: var(--accent); }
 
+/* ---------------------------------------------------------------- QR code */
+
+#qr-box {
+  display: flex;
+  justify-content: center;
+  margin: 14px 0 4px;
+}
+#qrcode {
+  background: #fff;             /* fond blanc : indispensable pour que le scan marche */
+  padding: 12px;
+  border-radius: 12px;
+  line-height: 0;
+}
+#qrcode img, #qrcode canvas { display: block; }
+
 /* ------------------------------------------------------------------- listes */
 
 .section-title {

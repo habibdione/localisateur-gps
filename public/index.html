@@ -33,14 +33,22 @@
         </div>
 
         <div id="setup" hidden>
-          <p class="section-title">Ajouter ce téléphone</p>
+          <p class="section-title">Inscrire un appareil / un proche</p>
           <div class="card">
             <p class="hint" style="margin-top:0">
-              Ouvrez ce lien <b>sur le téléphone à suivre</b>, saisissez son numéro
-              et touchez « Démarrer le suivi ».
+              La personne <b>scanne ce QR code</b> avec l'appareil photo de son téléphone,
+              saisit son numéro et touche « Démarrer le suivi ». Son téléphone devient
+              alors cherchable ici, par son numéro.
             </p>
+
+            <div id="qr-box">
+              <div id="qrcode"></div>
+            </div>
+
+            <p class="err" id="qr-warn" style="text-align:center" hidden></p>
+
             <div class="actions">
-              <a class="btn" id="tracker-link" href="#" target="_blank" rel="noopener">Ouvrir la page téléphone</a>
+              <a class="btn" id="tracker-link" href="#" target="_blank" rel="noopener">Ouvrir sur ce tél</a>
               <button class="ghost" id="copy-link">Copier le lien</button>
             </div>
           </div>
@@ -52,6 +60,7 @@
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="qrcode.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
