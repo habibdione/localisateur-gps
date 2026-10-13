@@ -10,6 +10,12 @@ services:
     envVars:
       - key: ACCESS_KEY
         sync: false           # vous saisissez votre clé secrète dans Render
+      # Base persistante optionnelle (Upstash Redis) : les positions survivent
+      # aux redémarrages. Laisser vide = stockage fichier (non persistant sur le gratuit).
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
     # Disque persistant pour garder les positions entre les redémarrages.
     # (Optionnel : sur le plan gratuit le disque n'est pas garanti.)
     autoDeploy: true

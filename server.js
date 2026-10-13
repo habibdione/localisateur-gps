@@ -13,6 +13,7 @@
 'use strict';
 
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -26,6 +27,13 @@ const CONFIG_FILE = path.join(ROOT, 'config.json');
 const PORT = Number(process.env.PORT) || 3000;
 const MAX_HISTORY = 800;          // points de trajet conserves par appareil
 const MAX_BODY = 32 * 1024;       // 32 Ko max par requete
+
+// Base persistante optionnelle (Upstash Redis via REST). Si ces deux variables
+// d'environnement sont definies, les donnees survivent aux redemarrages du serveur.
+const UPSTASH_URL = (process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/+$/, '');
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
+const USE_UPSTASH = !!(UPSTASH_URL && UPSTASH_TOKEN);
+const DB_KEY = 'devices';
 
 /* ------------------------------------------------------------------ config */
 
@@ -58,17 +66,63 @@ try {
   console.error('devices.json illisible, on repart a vide :', err.message);
 }
 
-let saveTimer = null;
-function save() {
-  if (saveTimer) return;                      // ecriture groupee : 1x/2s max
-  saveTimer = setTimeout(() => {
-    saveTimer = null;
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFile(DB_FILE + '.tmp', JSON.stringify(db), (err) => {
-      if (err) return console.error('ecriture:', err.message);
-      fs.rename(DB_FILE + '.tmp', DB_FILE, (e) => e && console.error(e.message));
+/* --- Base persistante Upstash (REST) : requete HTTPS minimale, zero dependance --- */
+
+function upstash(method, pathSuffix, body) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(UPSTASH_URL);
+    const opts = {
+      hostname: u.hostname,
+      port: u.port || 443,
+      path: u.pathname.replace(/\/+$/, '') + pathSuffix,
+      method,
+      headers: { Authorization: 'Bearer ' + UPSTASH_TOKEN }
+    };
+    const payload = body != null ? Buffer.from(body) : null;
+    if (payload) opts.headers['Content-Length'] = payload.length;
+    const req = https.request(opts, (res) => {
+      let b = '';
+      res.on('data', (c) => (b += c));
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) resolve(b);
+        else reject(new Error('Upstash HTTP ' + res.statusCode + ' ' + b));
+      });
     });
-  }, 2000);
+    req.on('error', reject);
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
+async function loadFromUpstash() {
+  const raw = await upstash('GET', '/get/' + DB_KEY);
+  const parsed = JSON.parse(raw);                 // { result: "<json>" | null }
+  if (parsed && parsed.result) db = JSON.parse(parsed.result) || {};
+}
+
+// Ecritures groupees : fichier (rapide, local) + Upstash (espace, pour la persistance).
+let saveTimer = null;
+let upstashTimer = null;
+
+function save() {
+  if (!saveTimer) {
+    saveTimer = setTimeout(() => {
+      saveTimer = null;
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      fs.writeFile(DB_FILE + '.tmp', JSON.stringify(db), (err) => {
+        if (err) return console.error('ecriture:', err.message);
+        fs.rename(DB_FILE + '.tmp', DB_FILE, (e) => e && console.error(e.message));
+      });
+    }, 2000);
+  }
+  if (USE_UPSTASH && !upstashTimer) {
+    upstashTimer = setTimeout(() => {
+      upstashTimer = null;
+      const snapshot = JSON.stringify(db);
+      upstash('POST', '/set/' + DB_KEY, snapshot)
+        .catch((e) => console.error('Upstash save:', e.message));
+    }, 15000);                                    // au plus 1 ecriture / 15 s
+  }
 }
 
 /**
@@ -301,9 +355,24 @@ const server = http.createServer(async (req, res) => {
   res.end('methode non autorisee');
 });
 
-server.listen(PORT, () => {
-  console.log('\n  Localisateur GPS demarre');
-  console.log('  Tableau de bord : http://localhost:' + PORT + '/?k=' + ACCESS_KEY);
-  console.log('  Page telephone  : http://localhost:' + PORT + '/tracker?k=' + ACCESS_KEY);
-  console.log("\n  Cle d'acces : " + ACCESS_KEY + '  (gardez-la privee)\n');
-});
+async function startup() {
+  if (USE_UPSTASH) {
+    try {
+      await loadFromUpstash();
+      console.log('  Base persistante Upstash : donnees chargees (' +
+                  Object.keys(db).length + ' appareil(s))');
+    } catch (e) {
+      console.error('  Upstash indisponible au demarrage (' + e.message +
+                    ') : demarrage sur les donnees locales.');
+    }
+  }
+
+  server.listen(PORT, () => {
+    console.log('\n  Localisateur GPS demarre' + (USE_UPSTASH ? ' [persistance Upstash]' : ''));
+    console.log('  Tableau de bord : http://localhost:' + PORT + '/?k=' + ACCESS_KEY);
+    console.log('  Page telephone  : http://localhost:' + PORT + '/tracker?k=' + ACCESS_KEY);
+    console.log("\n  Cle d'acces : " + ACCESS_KEY + '  (gardez-la privee)\n');
+  });
+}
+
+startup();
