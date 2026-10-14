@@ -152,7 +152,7 @@ let beepCtx = null;
 
 async function ring() {
   if (!current) return;
-  const digits = normPhone(current.phone);
+  const digits = String(current.phone).replace(/\D/g, '');   // le serveur normalise ensuite
   const btn = $('ring');
   btn.disabled = true;
   try {
