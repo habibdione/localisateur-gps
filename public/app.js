@@ -120,7 +120,7 @@ function render() {
       <dl class="grid">
         <div><dt>Latitude</dt><dd>${l.lat.toFixed(6)}</dd></div>
         <div><dt>Longitude</dt><dd>${l.lon.toFixed(6)}</dd></div>
-        <div><dt>Précision</dt><dd>${l.acc != null ? '± ' + l.acc + ' m' : '—'}</dd></div>
+        <div><dt>Précision</dt><dd>${l.acc != null ? (l.acc > 200 ? '⚠️ ± ' + l.acc + ' m (approx.)' : '± ' + l.acc + ' m') : '—'}</dd></div>
         <div><dt>Batterie</dt><dd>${l.bat != null ? l.bat + ' %' + (l.chg ? ' ⚡' : '') : '—'}</dd></div>
         <div><dt>Vitesse</dt><dd>${l.spd != null ? Math.round(l.spd * 3.6) + ' km/h' : '—'}</dd></div>
         <div><dt>Altitude</dt><dd>${l.alt != null ? l.alt + ' m' : '—'}</dd></div>
@@ -154,7 +154,7 @@ let beepCtx = null;
 
 async function ring() {
   if (!current) return;
-  const digits = String(current.phone).replace(/\D/g, '');   // le serveur normalise ensuite
+  const digits = String(current.phone);   // identifiant brut, le serveur normalise ensuite
   const btn = $('ring');
   btn.disabled = true;
   try {
@@ -251,14 +251,22 @@ function showToast(msg, kind) {
 
 /* ----------------------------------------------------------------- recherche */
 
+// Meme logique que le serveur : numero -> 9 derniers chiffres ; sinon slug (PC, objet).
+function normId(raw) {
+  const s = String(raw || '').trim();
+  const digits = s.replace(/\D/g, '');
+  if (digits.length >= 6) return digits.length > 9 ? digits.slice(-9) : digits;
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24);
+}
+
 async function locate(phone) {
   setError('');
-  const digits = String(phone || '').replace(/\D/g, '');
-  if (digits.length < 6) return setError('Numéro trop court.');
+  const q = String(phone || '').trim();
+  if (normId(q).length < 2) return setError('Entrez un numéro ou un nom d\'appareil.');
 
   $('go').disabled = true;
   try {
-    const d = await api('/device?history=1&phone=' + encodeURIComponent(digits));
+    const d = await api('/device?history=1&phone=' + encodeURIComponent(q));
     if (!d.last) throw new Error("Cet appareil est enregistré mais n'a envoyé aucune position.");
 
     current = d;
@@ -266,7 +274,7 @@ async function locate(phone) {
     followMap = true;
     render();
     drawPosition(d.last, d.history);
-    listen(digits);
+    listen(q);
 
     clearInterval(tick);
     tick = setInterval(render, 10000);              // l'age se rafraichit tout seul

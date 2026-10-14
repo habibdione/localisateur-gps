@@ -209,7 +209,7 @@ async function send(pos) {
     if (!r.ok) throw new Error(data.error || ('erreur ' + r.status));
     if (data.ring) maybeRing(data.ring);            // sonnerie demandee ?
     log('position envoyée (±' + Math.round(c.accuracy) + ' m)');
-    $('err').textContent = '';
+    // (l'eventuel avertissement de precision est gere par onPosition)
   } catch (e) {
     log('échec envoi : ' + e.message);
     $('err').textContent = 'Envoi impossible : ' + e.message;
@@ -221,6 +221,15 @@ function onPosition(pos) {
   $('coords').textContent = c.latitude.toFixed(6) + ', ' + c.longitude.toFixed(6);
   $('meta').textContent = 'Précision ± ' + Math.round(c.accuracy) + ' m'
     + (battery ? ' · batterie ' + Math.round(battery.level * 100) + ' %' : '');
+
+  // Precision mediocre = localisation approximative (reseau/WiFi) : la position
+  // ne suivra pas bien les deplacements. On previent l'utilisateur.
+  if (c.accuracy > 200) {
+    $('err').textContent = '⚠️ Position approximative (± ' + Math.round(c.accuracy)
+      + ' m). Activez la localisation PRÉCISE / le GPS de ce téléphone pour un suivi exact.';
+  } else {
+    $('err').textContent = '';
+  }
 
   const now = Date.now();
   if (now - lastSent < MIN_INTERVAL) return;
@@ -243,9 +252,16 @@ function onError(e) {
 let watchId = null;
 let heartbeat = null;
 
+function normId(raw) {
+  const s = String(raw || '').trim();
+  const d = s.replace(/\D/g, '');
+  if (d.length >= 6) return d.length > 9 ? d.slice(-9) : d;
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24);
+}
+
 function start() {
-  const digits = $('phone').value.replace(/\D/g, '');
-  if (digits.length < 6) { $('err').textContent = 'Saisissez un numéro valide.'; return; }
+  const digits = normId($('phone').value);
+  if (digits.length < 2) { $('err').textContent = "Saisissez un numéro ou un nom d'appareil."; return; }
   if (!KEY) { $('err').textContent = "Clé d'accès manquante : ouvrez le lien fourni par le tableau de bord."; return; }
   if (!navigator.geolocation) { $('err').textContent = "Ce navigateur ne gère pas la géolocalisation."; return; }
   if (!window.isSecureContext) {

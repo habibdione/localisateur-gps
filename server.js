@@ -126,12 +126,16 @@ function save() {
 }
 
 /**
- * Cle d'un appareil : les 9 derniers chiffres du numero.
- * Ainsi "+221 77 123 45 67", "00221771234567" et "771234567" donnent la meme cle.
+ * Cle d'un appareil, a partir d'un numero de telephone OU d'un nom libre (PC, objet).
+ * - Numero (>= 6 chiffres) : les 9 derniers chiffres. Ainsi "+221 77 123 45 67",
+ *   "00221771234567" et "771234567" donnent la meme cle.
+ * - Sinon (nom de PC, code) : slug alphanumerique en minuscules. "PC-Bureau" -> "pcbureau".
  */
 function normPhone(raw) {
-  const digits = String(raw || '').replace(/\D/g, '');
-  return digits.length > 9 ? digits.slice(-9) : digits;
+  const s = String(raw || '').trim();
+  const digits = s.replace(/\D/g, '');
+  if (digits.length >= 6) return digits.length > 9 ? digits.slice(-9) : digits;
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24);
 }
 
 /* ------------------------------------------------- temps reel (SSE) */
@@ -238,7 +242,7 @@ const server = http.createServer(async (req, res) => {
       if (!keyOk(body.key)) return sendJSON(res, 401, { error: 'cle invalide' });
 
       const key = normPhone(body.phone);
-      if (key.length < 6) return sendJSON(res, 400, { error: 'numero invalide' });
+      if (key.length < 2) return sendJSON(res, 400, { error: 'identifiant invalide' });
 
       const lat = Number(body.lat), lon = Number(body.lon);
       if (!Number.isFinite(lat) || !Number.isFinite(lon) ||
@@ -323,7 +327,7 @@ const server = http.createServer(async (req, res) => {
     // Flux temps reel pour un numero.
     if (p === '/api/events' && req.method === 'GET') {
       const key = normPhone(url.searchParams.get('phone'));
-      if (key.length < 6) return sendJSON(res, 400, { error: 'numero invalide' });
+      if (key.length < 2) return sendJSON(res, 400, { error: 'identifiant invalide' });
 
       res.writeHead(200, {
         'Content-Type': 'text/event-stream; charset=utf-8',
