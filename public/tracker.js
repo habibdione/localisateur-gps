@@ -31,12 +31,48 @@ let alarmNodes = null;
 let alarmTimer = null;
 let vibrateTimer = null;
 let lastRing = 0;
+let ringing = false;
+
+/**
+ * Construit une sirene (2 s, tons alternes) en WAV encode en data-URI.
+ * Un element <audio> debloque par un geste joue mieux sur iPhone que l'API Web Audio.
+ */
+function buildSirenWavUri() {
+  const sr = 8000, dur = 2, n = sr * dur;
+  const buf = new ArrayBuffer(44 + n * 2);
+  const v = new DataView(buf);
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); ws(8, 'WAVE'); ws(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  ws(36, 'data'); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    const freq = (Math.floor(t * 2) % 2 === 0) ? 800 : 1200;   // sirene
+    const s = Math.sin(2 * Math.PI * freq * t) * 0.7;
+    v.setInt16(44 + i * 2, s * 32767, true);
+  }
+  let bin = '';
+  const bytes = new Uint8Array(buf);
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return 'data:audio/wav;base64,' + btoa(bin);
+}
+
+try { $('alarm-audio').src = buildSirenWavUri(); } catch (_) {}
 
 function unlockAudio() {
   try {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === 'suspended') audioCtx.resume();
   } catch (_) { /* ignore */ }
+  // Debloque l'element <audio> dans ce geste (joue en silencieux puis met en pause).
+  try {
+    const a = $('alarm-audio');
+    a.muted = true;
+    const p = a.play();
+    if (p && p.then) p.then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; });
+    else { a.pause(); a.currentTime = 0; a.muted = false; }
+  } catch (_) {}
 }
 
 function stopAlarmSound() {
@@ -49,7 +85,19 @@ function stopAlarmSound() {
 
 function playAlarm() {
   unlockAudio();
-  if (!audioCtx) return;
+  ringing = true;
+
+  // 1) Element <audio> (meilleur sur iPhone, et joue meme si Web Audio est bride).
+  try {
+    const a = $('alarm-audio');
+    a.muted = false;
+    a.currentTime = 0;
+    const p = a.play();
+    if (p && p.catch) p.catch(() => {});
+  } catch (_) {}
+
+  // 2) Sirene Web Audio (forte sur Android/PC).
+  if (audioCtx) {
   stopAlarmSound();
 
   const osc = audioCtx.createOscillator();
@@ -67,6 +115,7 @@ function playAlarm() {
   }
   osc.start();
   alarmNodes = { osc, gain };
+  }
 
   if (navigator.vibrate) {
     try { navigator.vibrate([400, 200, 400, 200, 400]); } catch (_) {}
@@ -80,12 +129,23 @@ function playAlarm() {
 }
 
 function stopAlarm() {
+  ringing = false;
   stopAlarmSound();
+  try { const a = $('alarm-audio'); a.pause(); a.currentTime = 0; } catch (_) {}
   clearTimeout(alarmTimer);
   clearInterval(vibrateTimer);
   if (navigator.vibrate) { try { navigator.vibrate(0); } catch (_) {} }
   $('ring-banner').hidden = true;
 }
+
+// Si la page revient au premier plan pendant une sonnerie, on relance le son
+// (iOS/Android suspendent l'audio en arriere-plan).
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && ringing) {
+    try { if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); } catch (_) {}
+    try { const a = $('alarm-audio'); a.muted = false; const p = a.play(); if (p && p.catch) p.catch(() => {}); } catch (_) {}
+  }
+});
 
 function maybeRing(ts) {
   if (ts && ts > lastRing) { lastRing = ts; playAlarm(); }

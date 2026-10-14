@@ -135,12 +135,14 @@ function render() {
       </div>
       <div class="actions">
         <button id="ring">🔔 Faire sonner</button>
+        <button class="ghost" id="share">📤 Partager le lieu</button>
         <button class="ghost" id="alerts">${alertsOn ? '🔕 Alertes activées' : '🔔 Alerte hors-ligne'}</button>
       </div>
     </div>`;
 
   $('recenter').onclick = () => { followMap = true; map.setView([l.lat, l.lon], 17); };
   $('ring').onclick = ring;
+  $('share').onclick = shareLocation;
   $('alerts').onclick = toggleAlerts;
 }
 
@@ -164,6 +166,25 @@ async function ring() {
     showToast('Impossible d\'envoyer la sonnerie.', 'bad');
   } finally {
     setTimeout(() => { btn.disabled = false; }, 2500);
+  }
+}
+
+async function shareLocation() {
+  if (!current || !current.last) return;
+  const l = current.last;
+  const url = 'https://www.google.com/maps/search/?api=1&query=' + l.lat + ',' + l.lon;
+  const text = 'Position de ' + current.phone + (current.label ? ' (' + current.label + ')' : '')
+             + '\n' + url;
+  // Partage natif (ouvre WhatsApp/SMS/… sur mobile) si disponible.
+  if (navigator.share) {
+    try { await navigator.share({ title: 'Localisation', text: text, url: url }); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('📍 Lien du lieu copié — colle-le dans WhatsApp / SMS.', 'ok');
+  } catch (_) {
+    prompt('Copiez ce lien et envoyez-le :', text);
   }
 }
 
